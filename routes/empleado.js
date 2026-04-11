@@ -45,6 +45,9 @@ router.get('/:identificacion', async (req, res) => {
 
         // --- Lógica de Permisos ---
         let permisosIds = [];
+        let esRetirado  = false;
+        let rolVerTodo  = false;
+
         if (usuarioRows.length > 0) {
             const userRol = usuarioRows[0].Rol;
             const [[rolConfig]] = await db.query(
@@ -54,11 +57,14 @@ router.get('/:identificacion', async (req, res) => {
 
             if (rolConfig) {
                 // Determinamos estado basándonos en Vinculación (prioritario) o Segmentación
-                const estadoTrabajador = vinculacionRows.length > 0 
-                    ? vinculacionRows[0].Estado 
+                const estadoTrabajador = vinculacionRows.length > 0
+                    ? vinculacionRows[0].Estado
                     : trabajadorRows[0].Estado;
 
-                const rawList = /retirado/i.test(estadoTrabajador) ? rolConfig.doc_retirado : rolConfig.doc_activo;
+                esRetirado = /retirado/i.test(estadoTrabajador);
+                rolVerTodo = rolConfig.doc_retirado === 'Todo';
+
+                const rawList = esRetirado ? rolConfig.doc_retirado : rolConfig.doc_activo;
                 permisosIds = (rawList === 'Todo') ? 'Todo' : (rawList ? rawList.split(',').map(id => id.trim()) : []);
             }
         }
@@ -74,6 +80,12 @@ router.get('/:identificacion', async (req, res) => {
             grupos[clas].push(doc);
         });
 
+        // Si el trabajador es retirado y el rol NO tiene acceso total,
+        // solo mostrar la sección que contenga "retiro" en el nombre
+        const clasificacionesFiltradas = (esRetirado && !rolVerTodo)
+            ? clasificaciones.filter(c => /retiro/i.test(c))
+            : clasificaciones;
+
         // Mapa: TipoDocumento → doc más reciente (el query ya viene por FechaRegistro DESC)
         const mapaExistentes = {};
         docsExistentes.forEach(d => {
@@ -81,7 +93,7 @@ router.get('/:identificacion', async (req, res) => {
             if (!mapaExistentes[key]) mapaExistentes[key] = d;
         });
 
-        res.send(generarHtml(identificacion, usuario, trabajador, clasificaciones, grupos, mapaExistentes, permisosIds));
+        res.send(generarHtml(identificacion, usuario, trabajador, clasificacionesFiltradas, grupos, mapaExistentes, permisosIds));
 
     } catch (err) {
         console.error('Error GET /empleado:', err);
@@ -92,7 +104,7 @@ router.get('/:identificacion', async (req, res) => {
 // ─── POST /empleado/:identificacion/upload ──────────────────────────────────
 router.post('/:identificacion/upload', upload.single('archivo'), async (req, res) => {
     const { identificacion } = req.params;
-    const { id_config_doc, usuario, observaciones } = req.body;
+    const { id_config_doc, usuario } = req.body;
 
     if (!req.file) {
         return res.status(400).json({ ok: false, error: 'No se recibió ningún archivo.' });
@@ -101,7 +113,7 @@ router.post('/:identificacion/upload', upload.single('archivo'), async (req, res
     try {
         const [[configRows], [segRows], [vincRows], [userRows]] = await Promise.all([
             db.query(
-                'SELECT Id, Prefijo, Documento FROM Config_Doc_Trabajador WHERE Id = ?',
+                'SELECT Id, Prefijo, Documento, Permisos FROM Config_Doc_Trabajador WHERE Id = ?',
                 [id_config_doc]
             ),
             db.query(
@@ -109,7 +121,7 @@ router.post('/:identificacion/upload', upload.single('archivo'), async (req, res
                 [identificacion]
             ),
             db.query(
-                'SELECT Estado FROM Maestro_Vinculación WHERE Identificación = ? ORDER BY `Fecha de Ingreso` DESC LIMIT 1',
+                'SELECT Estado, `Fecha de Ingreso` FROM Maestro_Vinculación WHERE Identificación = ? ORDER BY `Fecha de Ingreso` DESC LIMIT 1',
                 [identificacion]
             ),
             db.query(
@@ -143,6 +155,19 @@ router.post('/:identificacion/upload', upload.single('archivo'), async (req, res
         const config = configRows[0];
         const seg    = segRows[0];
 
+        // Regional desde Maestro_Operaciones
+        const [[opRows]] = await db.query(
+            'SELECT REGIONAL FROM Maestro_Operaciones WHERE OPERACIÓN = ? LIMIT 1',
+            [seg['Operación'] || null]
+        );
+        const regional = (opRows && opRows.REGIONAL) || null;
+
+        // Fecha_Ingreso desde Maestro_Vinculación
+        const fechaIngreso = (vincRows.length > 0 && vincRows[0]['Fecha de Ingreso']) || null;
+
+        // Visualizar: 'SI' solo si Permisos = 'Ver'
+        const visualizar = config.Permisos === 'Ver' ? 'SI' : null;
+
         // Nombre del archivo: [ID].[Prefijo].[uuid8].[ext]
         const uuid        = randomUUID().replace(/-/g, '');
         const uuid8       = uuid.substring(0, 8);
@@ -166,18 +191,18 @@ router.post('/:identificacion/upload', upload.single('archivo'), async (req, res
             'INSERT INTO Maestro_docTrabajador' +
             ' (id, `Validación`, Regional, `Operación`, Identificación, Estado, Fecha_Ingreso,' +
             '  TipoDocumento, Prefijo, Doc, Observaciones, Visualizar, Usuario)' +
-            " VALUES (?, 'PEND', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'SI', ?)",
+            " VALUES (?, 'PEND', ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
             [
                 id_db,
-                seg.Regional           || null,
+                regional,
                 seg['Operación']       || null,
                 identificacion,
                 seg.Estado             || null,
-                seg['Fecha de Ingreso']|| null,
+                fechaIngreso,
                 String(config.Id),
                 config.Prefijo,
                 nombreArchivo,
-                observaciones          || null,
+                visualizar,
                 usuario                || null,
             ]
         );
