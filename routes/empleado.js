@@ -93,7 +93,8 @@ router.get('/:identificacion', async (req, res) => {
             if (!mapaExistentes[key]) mapaExistentes[key] = d;
         });
 
-        res.send(generarHtml(identificacion, usuario, trabajador, clasificacionesFiltradas, grupos, mapaExistentes, permisosIds));
+        const userRolFinal = usuarioRows.length > 0 ? usuarioRows[0].Rol : '';
+        res.send(generarHtml(identificacion, usuario, trabajador, clasificacionesFiltradas, grupos, mapaExistentes, permisosIds, userRolFinal));
 
     } catch (err) {
         console.error('Error GET /empleado:', err);
@@ -217,7 +218,7 @@ router.post('/:identificacion/upload', upload.single('archivo'), async (req, res
 
 // ─── HTML ────────────────────────────────────────────────────────────────────
 
-function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupos, mapaExistentes, permisosIds) {
+function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupos, mapaExistentes, permisosIds, userRol) {
     const nombre    = trabajador.Trabajador || 'Trabajador';
     const estado    = trabajador.Estado     || '';
     const operacion = trabajador['Operación'] || '';
@@ -300,8 +301,29 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
                     </div>`;
                 }
             } else {
-                badgeHtml  = '<span class="badge bg-emerald-100 text-emerald-700 border-emerald-200">Aprobado</span>';
-                accionHtml = url ? `<a href="${url}" target="_blank" class="btn-ver">Ver</a>` : '';
+                badgeHtml = '<span class="badge bg-emerald-100 text-emerald-700 border-emerald-200">Aprobado</span>';
+                if (userRol === 'Archivo') {
+                    accionHtml = `
+                    <div class="flex flex-col items-end gap-1.5">
+                        ${url ? `<a href="${url}" target="_blank" class="btn-ver">Ver</a>` : ''}
+                        <div class="drop-zone-staging drop-zone-replace border border-dashed border-orange-200 bg-white rounded-xl px-3 py-2 cursor-pointer transition-all relative w-full sm:min-w-[13rem]"
+                             data-doc-id="${doc.Id}" data-doc-nombre="${nombreDoc}">
+                            <div class="zone-idle flex items-center justify-center gap-1.5 pointer-events-none">
+                                <svg class="w-3 h-3 text-orange-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                                <span class="text-xs text-orange-400">Reemplazar — arrastra o haz clic</span>
+                            </div>
+                            <div class="zone-staged hidden items-center gap-2 w-full pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                <span class="zone-filename text-xs text-slate-700 font-medium truncate flex-1"></span>
+                                <span class="badge bg-orange-100 text-orange-600 border-orange-200 pointer-events-auto flex-shrink-0">En cola</span>
+                                <button type="button" class="zone-remove pointer-events-auto text-slate-400 hover:text-red-500 transition-colors text-sm px-1 flex-shrink-0">✕</button>
+                            </div>
+                            <input type="file" class="input-file-staging absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,.jpg,.jpeg,.png,.webp">
+                        </div>
+                    </div>`;
+                } else {
+                    accionHtml = url ? `<a href="${url}" target="_blank" class="btn-ver">Ver</a>` : '';
+                }
             }
 
             return `
