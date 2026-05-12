@@ -1,17 +1,20 @@
+# Usamos una imagen ligera de Node.js
 FROM node:20-slim
 
-WORKDIR /app
+# Directorio de trabajo en el contenedor
+WORKDIR /usr/src/app
 
-# Instala dependencias primero (mejor cache de capas)
+# Copiamos los archivos de dependencias
 COPY package*.json ./
-RUN npm ci --omit=dev
 
-# Copia el resto del código
+# Instalamos solo dependencias de producción
+RUN npm install --only=production
+
+# Copiamos el resto del código
 COPY . .
 
-ENV NODE_ENV=production
-ENV PORT=8080
-
+# Exponemos el puerto que usa Cloud Run (8080 por defecto)
 EXPOSE 8080
 
-CMD ["node", "app.js"]
+# Comando para arrancar la aplicación
+CMD [ "npm", "start" ]
