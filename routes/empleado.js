@@ -302,7 +302,7 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
                 }
             } else {
                 badgeHtml = '<span class="badge bg-emerald-100 text-emerald-700 border-emerald-200">Aprobado</span>';
-                if (userRol === 'Archivo') {
+                if (['Archivo', 'Nomina', 'Contratación'].includes(userRol)) {
                     accionHtml = `
                     <div class="flex flex-col items-end gap-1.5">
                         ${url ? `<a href="${url}" target="_blank" class="btn-ver">Ver</a>` : ''}
