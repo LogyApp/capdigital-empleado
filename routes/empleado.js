@@ -275,7 +275,7 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
                         <div class="zone-staged hidden items-center gap-2 w-full pointer-events-none">
                             <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                             <span class="zone-filename text-xs text-slate-700 font-medium truncate flex-1"></span>
-                            <span class="badge bg-orange-100 text-orange-600 border-orange-200 pointer-events-auto flex-shrink-0">En cola</span>
+                            <span class="badge bg-orange-100 text-orange-600 border-orange-200 pointer-events-auto flex-shrink-0">Subiendo...</span>
                             <button type="button" class="zone-remove pointer-events-auto text-slate-400 hover:text-red-500 transition-colors text-sm px-1 flex-shrink-0">✕</button>
                         </div>
                         <input type="file" class="input-file-staging absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,.jpg,.jpeg,.png,.webp">
@@ -293,7 +293,7 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
                             <div class="zone-staged hidden items-center gap-2 w-full pointer-events-none">
                                 <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 <span class="zone-filename text-xs text-slate-700 font-medium truncate flex-1"></span>
-                                <span class="badge bg-orange-100 text-orange-600 border-orange-200 pointer-events-auto flex-shrink-0">En cola</span>
+                                <span class="badge bg-orange-100 text-orange-600 border-orange-200 pointer-events-auto flex-shrink-0">Subiendo...</span>
                                 <button type="button" class="zone-remove pointer-events-auto text-slate-400 hover:text-red-500 transition-colors text-sm px-1 flex-shrink-0">✕</button>
                             </div>
                             <input type="file" class="input-file-staging absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,.jpg,.jpeg,.png,.webp">
@@ -315,7 +315,7 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
                             <div class="zone-staged hidden items-center gap-2 w-full pointer-events-none">
                                 <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 <span class="zone-filename text-xs text-slate-700 font-medium truncate flex-1"></span>
-                                <span class="badge bg-orange-100 text-orange-600 border-orange-200 pointer-events-auto flex-shrink-0">En cola</span>
+                                <span class="badge bg-orange-100 text-orange-600 border-orange-200 pointer-events-auto flex-shrink-0">Subiendo...</span>
                                 <button type="button" class="zone-remove pointer-events-auto text-slate-400 hover:text-red-500 transition-colors text-sm px-1 flex-shrink-0">✕</button>
                             </div>
                             <input type="file" class="input-file-staging absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,.jpg,.jpeg,.png,.webp">
@@ -426,7 +426,7 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
         ${acordeonesHtml}
     </div>
 
-    <!-- ── Barra de guardado por lotes ── -->
+    <!-- ── Barra de guardado por lotes (DESHABILITADA TEMPORALMENTE: subida inmediata al arrastrar) ── -->
     <div id="save-bar" class="fixed bottom-0 left-0 right-0 z-40 hidden">
         <div class="bg-slate-800 text-white px-5 py-3 flex items-center justify-between gap-4 max-w-4xl mx-auto rounded-t-2xl shadow-2xl">
             <span id="save-bar-label" class="text-sm font-medium flex items-center gap-2">
@@ -484,14 +484,22 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
             staged.classList.remove('flex');
         }
 
-        function encolarArchivo(file, docId, zone) {
+        // CAMBIO TEMPORAL: antes se encolaba el archivo y se guardaba con el botón "GUARDAR TODO";
+        // ahora se sube inmediatamente al arrastrar o seleccionar. Revertir si se retoma el flujo por lotes.
+        async function encolarArchivo(file, docId, zone) {
             if (file.size > 20 * 1024 * 1024) {
                 showToast('El archivo supera los 20MB.', 'error');
                 return;
             }
-            cola.set(docId, { file, zone });
             mostrarStagedUI(zone, file);
-            actualizarBarra();
+            const ok = await subirArchivo(file, docId, zone);
+            if (ok) {
+                showToast('Documento subido correctamente.', 'success');
+                // Persiste el acordeón abierto para restaurarlo tras el reload
+                const accBody = zone.closest('[id^="acc-"]');
+                if (accBody) sessionStorage.setItem('openAcc', accBody.id);
+                setTimeout(() => window.location.reload(), 1000);
+            }
         }
 
         function desencolarArchivo(docId, zone) {
@@ -511,6 +519,20 @@ function generarHtml(identificacion, usuario, trabajador, clasificaciones, grupo
                 btn.setAttribute('aria-expanded', String(!open));
             });
         });
+
+        // Restaura el acordeón que estaba abierto antes del reload por subida inmediata
+        const savedAcc = sessionStorage.getItem('openAcc');
+        if (savedAcc) {
+            sessionStorage.removeItem('openAcc');
+            const accBody = document.getElementById(savedAcc);
+            const accBtn  = document.querySelector('[data-target="' + savedAcc + '"]');
+            if (accBody && accBtn) {
+                accBody.classList.remove('hidden');
+                accBtn.querySelector('.accordion-icon').classList.add('rotate-180');
+                accBtn.setAttribute('aria-expanded', 'true');
+                accBody.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
 
         // ── Zonas de staging ──────────────────────────────────────────────────
         document.querySelectorAll('.drop-zone-staging').forEach(zone => {
